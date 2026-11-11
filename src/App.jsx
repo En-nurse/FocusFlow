@@ -3,7 +3,10 @@ import './App.css';
 
 import { TaskProvider } from './context/TaskContext';
 import Layout from './components/Layout';
+import ProtectedRoute from './components/ProtectedRoute';
+import PublicRoute from './components/PublicRoute';
 import LoginForm from './pages/Login';
+import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import MyTasks from './pages/MyTasks';
 import Calendar from './pages/Calendar';
@@ -14,15 +17,21 @@ function App() {
     <TaskProvider>
       <BrowserRouter>
         <Routes>
-          {/* Public Route */}
-          <Route path="/" element={<LoginForm />} />
+          {/* Public Routes (สิทธิ์ผู้ใช้ทั่วไป: หากล็อกอินแล้วจะ Redirect ไปยัง /dashboard) */}
+          <Route element={<PublicRoute />}>
+            <Route path="/" element={<LoginForm />} />
+            <Route path="/login" element={<LoginForm />} />
+            <Route path="/register" element={<Register />} />
+          </Route>
 
-          {/* Protected Routes with shared Sidebar Layout */}
-          <Route element={<Layout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/tasks" element={<MyTasks />} />
-            <Route path="/calendar" element={<Calendar />} />
-            <Route path="/profile" element={<Profile />} />
+          {/* Protected Routes (ต้องล็อกอินก่อนเข้าถึง: หากยังไม่ล็อกอินจะ Redirect ไปยัง /login) */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={<Layout />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/tasks" element={<MyTasks />} />
+              <Route path="/calendar" element={<Calendar />} />
+              <Route path="/profile" element={<Profile />} />
+            </Route>
           </Route>
 
           {/* Catch-all redirect to Dashboard */}

@@ -1,14 +1,40 @@
+import { useState, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useTasks } from "../context/useTasks";
 import "./Sidebar.css";
 import defaultAvatar from "../assets/333db7ac9acafaaa393b024772e3d697.jpg";
+import { supabase } from "../lib/supabase";
 
 function Sidebar() {
   const navigate = useNavigate();
-  const { user, tasks } = useTasks();
+  const { user, tasks, updateUser } = useTasks();
+  const [loggingOut, setLoggingOut] = useState(false);
 
-  const handleLogout = () => {
-    navigate("/");
+  // ซิงค์อีเมลของผู้ใช้จาก Supabase Auth session เข้าสู่ TaskContext
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user: authUser } }) => {
+      if (authUser?.email && user.email !== authUser.email) {
+        updateUser({ email: authUser.email });
+      }
+    });
+  }, [user.email, updateUser]);
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        alert("เกิดข้อผิดพลาดในการออกจากระบบ: " + error.message);
+        return;
+      }
+      navigate("/login", { replace: true });
+    } catch {
+      alert("เกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่อีกครั้ง");
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   const pendingTasksCount = tasks.filter(
@@ -181,6 +207,7 @@ function Sidebar() {
         <button
           className="sidebar-logout-btn"
           onClick={handleLogout}
+          disabled={loggingOut}
           title="ออกจากระบบ"
         >
           <svg
@@ -198,7 +225,7 @@ function Sidebar() {
             <polyline points="16 17 21 12 16 7" />
             <line x1="21" x2="9" y1="12" y2="12" />
           </svg>
-          <span>ออกจากระบบ</span>
+          <span>{loggingOut ? "กำลังออกจากระบบ..." : "ออกจากระบบ"}</span>
         </button>
       </div>
     </aside>
