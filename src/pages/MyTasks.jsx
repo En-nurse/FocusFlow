@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { useTasks } from '../context/useTasks';
+import { useToast } from '../context/useToast';
+import { TASK_COLORS, DEFAULT_TASK_COLOR } from '../constants/taskColors';
 import './MyTasks.css';
 
 function MyTasks() {
   const { tasks, addTask, updateTask, deleteTask, updateTaskStatus } = useTasks();
+  const { showToast, showConfirm } = useToast();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
-  const [filterPriority, setFilterPriority] = useState('All');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -18,7 +20,8 @@ function MyTasks() {
     title: '',
     description: '',
     dueDate: '',
-    priority: 'Medium',
+    priority: 'Normal',
+    color: DEFAULT_TASK_COLOR,
     status: 'Not Started',
   });
 
@@ -30,7 +33,8 @@ function MyTasks() {
       title: '',
       description: '',
       dueDate: todayStr,
-      priority: 'Medium',
+      priority: 'Normal',
+      color: DEFAULT_TASK_COLOR,
       status: 'Not Started',
     });
     setIsModalOpen(true);
@@ -42,7 +46,8 @@ function MyTasks() {
       title: task.title,
       description: task.description || '',
       dueDate: task.dueDate || '',
-      priority: task.priority || 'Medium',
+      priority: 'Normal',
+      color: task.color || DEFAULT_TASK_COLOR,
       status: task.status || 'Not Started',
     });
     setIsModalOpen(true);
@@ -59,34 +64,56 @@ function MyTasks() {
 
     if (editingTask) {
       updateTask(editingTask.id, formData);
+      showToast(`บันทึกการแก้ไข "${formData.title}" เรียบร้อย ✏️`, 'info');
     } else {
       addTask(formData);
+      showToast(`สร้างงานใหม่ "${formData.title}" สำเร็จ ✨`, 'success');
     }
     handleCloseModal();
   };
 
   const handleDelete = (id, title) => {
-    if (window.confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบงาน "${title}"?`)) {
-      deleteTask(id);
+    showConfirm({
+      title: 'ยืนยันการลบงาน',
+      message: `คุณแน่ใจหรือไม่ว่าต้องการลบงาน "${title}"? ข้อมูลจะถูกลบออกจากระบบอย่างถาวร`,
+      confirmText: 'ยืนยันการลบ',
+      cancelText: 'ยกเลิก',
+      type: 'danger',
+      onConfirm: () => {
+        deleteTask(id);
+        showToast(`ลบงาน "${title}" เรียบร้อยแล้ว 🗑️`, 'info');
+      },
+    });
+  };
+
+  const handleToggleStatus = (task) => {
+    const isCompleted = (task.status || 'Not Started') === 'Completed';
+    const nextStatus = isCompleted ? 'In Progress' : 'Completed';
+    updateTaskStatus(task.id, nextStatus);
+
+    if (!isCompleted) {
+      showToast(`🎉 ยินดีด้วย! คุณทำงาน "${task.title}" เสร็จสิ้นแล้ว!`, 'celebrate');
+    } else {
+      showToast(`สลับสถานะงาน "${task.title}" กลับเป็นกำลังทำ ⚡`, 'info');
     }
   };
 
   // Status counts
   const totalCount = tasks.length;
-  const notStartedCount = tasks.filter((t) => t.status === 'Not Started').length;
+  const notStartedCount = tasks.filter((t) => (t.status || 'Not Started') === 'Not Started').length;
   const inProgressCount = tasks.filter((t) => t.status === 'In Progress').length;
   const completedCount = tasks.filter((t) => t.status === 'Completed').length;
 
-  // Filter & Search logic
+  // Filter & Search logic for List View
   const filteredTasks = tasks.filter((task) => {
     const matchesSearch =
       task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (task.description && task.description.toLowerCase().includes(searchTerm.toLowerCase()));
 
-    const matchesStatus = filterStatus === 'All' || task.status === filterStatus;
-    const matchesPriority = filterPriority === 'All' || task.priority === filterPriority;
+    const currentStatus = task.status || 'Not Started';
+    const matchesStatus = filterStatus === 'All' || currentStatus === filterStatus;
 
-    return matchesSearch && matchesStatus && matchesPriority;
+    return matchesSearch && matchesStatus;
   });
 
   const getDueBadge = (dueDate, status) => {
@@ -109,8 +136,9 @@ function MyTasks() {
         <div>
           <div className="tasks-tag">TASK MANAGEMENT</div>
           <h1 className="page-title">My Tasks</h1>
-          <p className="page-desc">จัดการรายการงาน กำหนดส่ง และระดับความสำคัญอย่างมืออาชีพ</p>
+          <p className="page-desc">จัดการรายการงานและกำหนดส่งอย่างมืออาชีพ</p>
         </div>
+
         <button className="add-task-btn" onClick={handleOpenAddModal}>
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M5 12h14" />
@@ -172,21 +200,6 @@ function MyTasks() {
             <button className="clear-search" onClick={() => setSearchTerm('')} title="ล้างการค้นหา">✕</button>
           )}
         </div>
-
-        <div className="filters-group">
-          <div className="priority-filter-wrapper">
-            <label>ความสำคัญ:</label>
-            <select
-              value={filterPriority}
-              onChange={(e) => setFilterPriority(e.target.value)}
-            >
-              <option value="All">ทุกระดับ</option>
-              <option value="High">High (สูง)</option>
-              <option value="Medium">Medium (กลาง)</option>
-              <option value="Low">Low (ต่ำ)</option>
-            </select>
-          </div>
-        </div>
       </div>
 
       {/* Task Count Info */}
@@ -199,20 +212,25 @@ function MyTasks() {
         {filteredTasks.length === 0 ? (
           <div className="empty-state-card">
             <h3>ไม่พบงานที่ตรงกับเงื่อนไข</h3>
-            <p>ลองปรับคำค้นหา หรือกดปุ่ม "+ เพิ่มงานใหม่" เพื่อสร้างรายการ</p>
+            <p>ลองปรับคำค้นหา หรือกดปุ่ม "+ สร้างงานใหม่" เพื่อสร้างรายการ</p>
             <button className="empty-add-btn" onClick={handleOpenAddModal}>+ สร้างงานใหม่</button>
           </div>
         ) : (
           filteredTasks.map((task) => (
             <div
               key={task.id}
-              className={`task-card priority-${task.priority.toLowerCase()} ${task.status === 'Completed' ? 'is-completed' : ''}`}
+              className={`task-card ${(task.status || 'Not Started') === 'Completed' ? 'is-completed' : ''}`}
+              style={{
+                borderLeftColor: (task.status || 'Not Started') === 'Completed' ? '#10b981' : (task.color || DEFAULT_TASK_COLOR),
+              }}
             >
               <div className="task-card-header">
                 <div className="task-badges">
-                  <span className={`priority-tag ${task.priority.toLowerCase()}`}>
-                    {task.priority}
-                  </span>
+                  <span
+                    className="task-color-indicator"
+                    style={{ backgroundColor: task.color || DEFAULT_TASK_COLOR }}
+                    title="สีของงาน"
+                  />
                   <span className="due-date-tag">
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <rect width="18" height="18" x="3" y="4" rx="2" />
@@ -254,7 +272,42 @@ function MyTasks() {
                 </div>
               </div>
 
-              <h3 className="task-card-title">{task.title}</h3>
+              <div className="task-card-title-line">
+                <button
+                  type="button"
+                  className={`task-quick-check-btn ${(task.status || 'Not Started') === 'Completed' ? 'checked' : ''}`}
+                  onClick={() => handleToggleStatus(task)}
+                  title={
+                    (task.status || 'Not Started') === 'Completed'
+                      ? 'ทำเครื่องหมายว่ายังไม่เสร็จ'
+                      : 'คลิกเพื่อจบงานทันที'
+                  }
+                  aria-label={
+                    (task.status || 'Not Started') === 'Completed'
+                      ? 'ทำเครื่องหมายว่ายังไม่เสร็จ'
+                      : 'คลิกเพื่อจบงานทันที'
+                  }
+                >
+                  {(task.status || 'Not Started') === 'Completed' && (
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
+                </button>
+                <h3 className={`task-card-title ${(task.status || 'Not Started') === 'Completed' ? 'done' : ''}`}>
+                  {task.title}
+                </h3>
+              </div>
               {task.description && (
                 <p className="task-card-desc">{task.description}</p>
               )}
@@ -262,9 +315,17 @@ function MyTasks() {
               <div className="task-card-footer">
                 <span className="status-label">สถานะ:</span>
                 <select
-                  className={`status-select-pill ${task.status.toLowerCase().replace(' ', '-')}`}
-                  value={task.status}
-                  onChange={(e) => updateTaskStatus(task.id, e.target.value)}
+                  className={`status-select-pill ${(task.status || 'Not Started').toLowerCase().replace(' ', '-')}`}
+                  value={task.status || 'Not Started'}
+                  onChange={(e) => {
+                    const newStatus = e.target.value;
+                    updateTaskStatus(task.id, newStatus);
+                    if (newStatus === 'Completed') {
+                      showToast(`🎉 ทำงาน "${task.title}" เสร็จสิ้นแล้ว!`, 'celebrate');
+                    } else {
+                      showToast(`เปลี่ยนสถานะงานเป็น "${newStatus}"`, 'info');
+                    }
+                  }}
                 >
                   <option value="Not Started">Not Started</option>
                   <option value="In Progress">In Progress</option>
@@ -319,28 +380,33 @@ function MyTasks() {
                 </div>
 
                 <div className="form-group">
-                  <label>ระดับความสำคัญ</label>
+                  <label>สถานะ</label>
                   <select
-                    value={formData.priority}
-                    onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                    value={formData.status}
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                   >
-                    <option value="High">High (สูง)</option>
-                    <option value="Medium">Medium (กลาง)</option>
-                    <option value="Low">Low (ต่ำ)</option>
+                    <option value="Not Started">Not Started (รอดำเนินการ)</option>
+                    <option value="In Progress">In Progress (กำลังทำ)</option>
+                    <option value="Completed">Completed (เสร็จสิ้น)</option>
                   </select>
                 </div>
               </div>
 
               <div className="form-group">
-                <label>สถานะ</label>
-                <select
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                >
-                  <option value="Not Started">Not Started (รอดำเนินการ)</option>
-                  <option value="In Progress">In Progress (กำลังทำ)</option>
-                  <option value="Completed">Completed (เสร็จสิ้น)</option>
-                </select>
+                <label>เลือกสีงาน</label>
+                <div className="color-swatches">
+                  {TASK_COLORS.map((c) => (
+                    <button
+                      key={c.value}
+                      type="button"
+                      className={`color-swatch-btn ${formData.color === c.value ? "selected" : ""}`}
+                      style={{ backgroundColor: c.value }}
+                      onClick={() => setFormData({ ...formData, color: c.value })}
+                      title={c.label}
+                      aria-label={c.label}
+                    />
+                  ))}
+                </div>
               </div>
 
               <div className="modal-actions">

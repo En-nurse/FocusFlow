@@ -1,13 +1,15 @@
 import { useState, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useTasks } from "../context/useTasks";
+import { useToast } from "../context/useToast";
 import "./Sidebar.css";
-import defaultAvatar from "../assets/333db7ac9acafaaa393b024772e3d697.jpg";
+import defaultAvatar from "../assets/default-avatar.svg";
 import { supabase } from "../lib/supabase";
 
 function Sidebar() {
   const navigate = useNavigate();
   const { user, tasks, updateUser } = useTasks();
+  const { showToast, showConfirm } = useToast();
   const [loggingOut, setLoggingOut] = useState(false);
 
   // ซิงค์อีเมลของผู้ใช้จาก Supabase Auth session เข้าสู่ TaskContext
@@ -19,22 +21,31 @@ function Sidebar() {
     });
   }, [user.email, updateUser]);
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     if (loggingOut) return;
-    setLoggingOut(true);
-
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        alert("เกิดข้อผิดพลาดในการออกจากระบบ: " + error.message);
-        return;
-      }
-      navigate("/login", { replace: true });
-    } catch {
-      alert("เกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่อีกครั้ง");
-    } finally {
-      setLoggingOut(false);
-    }
+    showConfirm({
+      title: 'ออกจากระบบ',
+      message: 'คุณแน่ใจหรือไม่ว่าต้องการออกจากระบบ FocusFlow?',
+      confirmText: 'ออกจากระบบ',
+      cancelText: 'ยกเลิก',
+      type: 'danger',
+      onConfirm: async () => {
+        setLoggingOut(true);
+        try {
+          const { error } = await supabase.auth.signOut();
+          if (error) {
+            showToast("เกิดข้อผิดพลาดในการออกจากระบบ: " + error.message, 'error');
+            return;
+          }
+          showToast("ออกจากระบบสำเร็จ 👋", 'info');
+          navigate("/login", { replace: true });
+        } catch {
+          showToast("เกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่อีกครั้ง", 'error');
+        } finally {
+          setLoggingOut(false);
+        }
+      },
+    });
   };
 
   const pendingTasksCount = tasks.filter(
@@ -199,7 +210,7 @@ function Sidebar() {
           <div className="user-info">
             <span className="user-name">{user.name || "ผู้ใช้งาน"}</span>
             <span className="user-email">
-              {user.email || "nurse@gmail.com"}
+              {user.email || ""}
             </span>
           </div>
         </div>

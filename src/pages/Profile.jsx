@@ -1,10 +1,12 @@
 import { useState, useRef } from 'react';
 import { useTasks } from '../context/useTasks';
+import { useToast } from '../context/useToast';
 import './Profile.css';
-import defaultAvatar from '../assets/333db7ac9acafaaa393b024772e3d697.jpg';
+import defaultAvatar from '../assets/default-avatar.svg';
 
 function Profile() {
   const { user, updateUser } = useTasks();
+  const { showToast } = useToast();
   const fileInputRef = useRef(null);
 
   const [formData, setFormData] = useState({
@@ -24,15 +26,23 @@ function Profile() {
       reader.onloadend = () => {
         setAvatar(reader.result);
         updateUser({ avatarUrl: reader.result });
+        showToast('อัปโหลดรูปโปรไฟล์ใหม่เรียบร้อย 📷', 'success');
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handleRemoveAvatar = () => {
+    setAvatar(defaultAvatar);
+    updateUser({ avatarUrl: '' });
+    showToast('รีเซ็ตรูปโปรไฟล์กลับเป็นค่าเริ่มต้นแล้ว', 'info');
   };
 
   const handleSubmitProfile = (e) => {
     e.preventDefault();
     updateUser({ ...formData, avatarUrl: avatar });
     setSaveSuccess(true);
+    showToast('บันทึกข้อมูลส่วนตัวเรียบร้อยแล้ว ✅', 'success');
     setTimeout(() => {
       setSaveSuccess(false);
     }, 3000);
@@ -72,6 +82,17 @@ function Profile() {
               style={{ display: 'none' }}
             />
           </div>
+
+          {user.avatarUrl && (
+            <button
+              type="button"
+              className="remove-avatar-btn"
+              onClick={handleRemoveAvatar}
+              title="รีเซ็ตกลับเป็นรูปเริ่มต้น"
+            >
+              รีเซ็ตรูปภาพเริ่มต้น
+            </button>
+          )}
 
           <h2 className="summary-name">{formData.name}</h2>
 

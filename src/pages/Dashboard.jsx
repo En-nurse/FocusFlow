@@ -1,40 +1,79 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useTasks } from "../context/useTasks";
+import { useToast } from "../context/useToast";
+import { TASK_COLORS, DEFAULT_TASK_COLOR } from "../constants/taskColors";
 import "./Dashboard.css";
 
 function Dashboard() {
-  const { tasks, user, addTask } = useTasks();
+  const { tasks, user, addTask, updateTask, updateTaskStatus } = useTasks();
+  const { showToast } = useToast();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     dueDate: "",
-    priority: "Medium",
+    priority: "Normal",
+    color: DEFAULT_TASK_COLOR,
     status: "Not Started",
   });
 
   const handleOpenAddModal = () => {
+    setEditingTask(null);
     setFormData({
       title: "",
       description: "",
       dueDate: "",
-      priority: "Medium",
+      priority: "Normal",
+      color: DEFAULT_TASK_COLOR,
       status: "Not Started",
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEditModal = (task) => {
+    setEditingTask(task);
+    setFormData({
+      title: task.title || "",
+      description: task.description || "",
+      dueDate: task.dueDate || "",
+      priority: task.priority || "Normal",
+      color: task.color || DEFAULT_TASK_COLOR,
+      status: task.status || "Not Started",
     });
     setIsModalOpen(true);
   };
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
+    setEditingTask(null);
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.title.trim()) return;
-    addTask(formData);
+
+    if (editingTask) {
+      updateTask(editingTask.id, formData);
+      showToast(`บันทึกการแก้ไข "${formData.title}" เรียบร้อย ✏️`, 'info');
+    } else {
+      addTask(formData);
+      showToast(`สร้างงานใหม่ "${formData.title}" สำเร็จ ✨`, 'success');
+    }
     handleCloseModal();
+  };
+
+  const handleToggleTaskStatus = (task) => {
+    const isCompleted = (task.status || "Not Started") === "Completed";
+    const nextStatus = isCompleted ? "In Progress" : "Completed";
+    updateTaskStatus(task.id, nextStatus);
+    if (!isCompleted) {
+      showToast(`🎉 ทำงาน "${task.title}" เสร็จสิ้นแล้ว!`, "celebrate");
+    } else {
+      showToast(`สลับสถานะ "${task.title}" กลับเป็นกำลังทำ`, "info");
+    }
   };
 
   const totalTasks = tasks.length;
@@ -99,19 +138,6 @@ function Dashboard() {
   );
 
   const recentTasks = tasks.slice(0, 5);
-
-  const getPriorityBadge = (priority) => {
-    switch (priority) {
-      case "High":
-        return <span className="priority-pill high">● High</span>;
-      case "Medium":
-        return <span className="priority-pill medium">● Medium</span>;
-      case "Low":
-        return <span className="priority-pill low">● Low</span>;
-      default:
-        return <span className="priority-pill">{priority}</span>;
-    }
-  };
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -403,11 +429,60 @@ function Dashboard() {
                 </button>
               </div>
             ) : (
-              recentTasks.map((task) => (
-                <div key={task.id} className="recent-task-row">
-                  <div className="task-row-info">
-                    <span className="task-row-title">{task.title}</span>
-                    <span className="task-row-due">
+              recentTasks.map((task) => {
+                const isCompleted = task.status === "Completed";
+                return (
+                  <div
+                    key={task.id}
+                    className={`recent-task-row ${isCompleted ? "is-completed" : ""}`}
+                    style={{
+                      borderLeft: `3px solid ${isCompleted ? "#10b981" : (task.color || DEFAULT_TASK_COLOR)}`,
+                    }}
+                  >
+                    <div className="task-row-info">
+                      <div className="task-row-title-line">
+                        <button
+                          type="button"
+                          className={`task-quick-check-btn ${isCompleted ? "checked" : ""}`}
+                          onClick={() => handleToggleTaskStatus(task)}
+                          title={
+                            isCompleted
+                              ? "ทำเครื่องหมายว่ายังไม่เสร็จ"
+                              : "ทำเครื่องหมายว่าเสร็จสิ้น"
+                          }
+                          aria-label={
+                            isCompleted
+                              ? "ทำเครื่องหมายว่ายังไม่เสร็จ"
+                              : "ทำเครื่องหมายว่าเสร็จสิ้น"
+                          }
+                        >
+                          {isCompleted && (
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="11"
+                              height="11"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="3.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                        </button>
+                        <span
+                          className="task-color-dot"
+                          style={{
+                            backgroundColor: task.color || DEFAULT_TASK_COLOR,
+                          }}
+                        />
+                        <span className={`task-row-title ${isCompleted ? "done" : ""}`}>
+                          {task.title}
+                        </span>
+                      </div>
+                      <span className="task-row-due">
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         width="12"
@@ -427,22 +502,43 @@ function Dashboard() {
                   </div>
 
                   <div className="task-row-badges">
-                    {getPriorityBadge(task.priority)}
+                    <button
+                      type="button"
+                      className="task-row-edit-btn"
+                      onClick={() => handleOpenEditModal(task)}
+                      title="แก้ไขงานนี้"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                        <path d="m15 5 4 4" />
+                      </svg>
+                    </button>
                     {getStatusBadge(task.status)}
                   </div>
                 </div>
-              ))
+              );
+            })
             )}
           </div>
         </div>
       </div>
 
-      {/* Add Task Modal */}
+      {/* Add / Edit Task Modal */}
       {isModalOpen && (
         <div className="modal-backdrop" onClick={handleCloseModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>เพิ่มงานใหม่</h2>
+              <h2>{editingTask ? "แก้ไขงาน" : "เพิ่มงานใหม่"}</h2>
               <button
                 className="modal-close-btn"
                 onClick={handleCloseModal}
@@ -494,32 +590,35 @@ function Dashboard() {
                 </div>
 
                 <div className="form-group">
-                  <label>ระดับความสำคัญ</label>
+                  <label>สถานะ</label>
                   <select
-                    value={formData.priority}
+                    value={formData.status}
                     onChange={(e) =>
-                      setFormData({ ...formData, priority: e.target.value })
+                      setFormData({ ...formData, status: e.target.value })
                     }
                   >
-                    <option value="High">High (สูง)</option>
-                    <option value="Medium">Medium (กลาง)</option>
-                    <option value="Low">Low (ต่ำ)</option>
+                    <option value="Not Started">Not Started (รอดำเนินการ)</option>
+                    <option value="In Progress">In Progress (กำลังทำ)</option>
+                    <option value="Completed">Completed (เสร็จสิ้น)</option>
                   </select>
                 </div>
               </div>
 
               <div className="form-group">
-                <label>สถานะ</label>
-                <select
-                  value={formData.status}
-                  onChange={(e) =>
-                    setFormData({ ...formData, status: e.target.value })
-                  }
-                >
-                  <option value="Not Started">Not Started (รอดำเนินการ)</option>
-                  <option value="In Progress">In Progress (กำลังทำ)</option>
-                  <option value="Completed">Completed (เสร็จสิ้น)</option>
-                </select>
+                <label>เลือกสีงาน</label>
+                <div className="color-swatches">
+                  {TASK_COLORS.map((c) => (
+                    <button
+                      key={c.value}
+                      type="button"
+                      className={`color-swatch-btn ${formData.color === c.value ? "selected" : ""}`}
+                      style={{ backgroundColor: c.value }}
+                      onClick={() => setFormData({ ...formData, color: c.value })}
+                      title={c.label}
+                      aria-label={c.label}
+                    />
+                  ))}
+                </div>
               </div>
 
               <div className="modal-actions">
@@ -531,7 +630,7 @@ function Dashboard() {
                   ยกเลิก
                 </button>
                 <button type="submit" className="btn-submit">
-                  สร้างงานใหม่
+                  {editingTask ? "บันทึกการแก้ไข" : "สร้างงานใหม่"}
                 </button>
               </div>
             </form>
