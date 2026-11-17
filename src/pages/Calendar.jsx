@@ -2,6 +2,8 @@ import { useState, useMemo } from "react";
 import { useTasks } from "../context/useTasks";
 import { useToast } from "../context/useToast";
 import { TASK_COLORS, DEFAULT_TASK_COLOR } from "../constants/taskColors";
+import TaskImage from "../components/TaskImage";
+import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_SIZE } from "../lib/taskStorage";
 import "./Calendar.css";
 
 const getTodayDateStr = () => {
@@ -26,38 +28,60 @@ const monthNames = [
 ];
 
 const daysOfWeek = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
-const fullDaysOfWeek = [
-  "อาทิตย์",
-  "จันทร์",
-  "อังคาร",
-  "พุธ",
-  "พฤหัสบดี",
-  "ศุกร์",
-  "เสาร์",
-];
+
+const getTaskDateRange = (task) => {
+  if (!task) return { actualStart: "", actualEnd: "" };
+  const created = task.createdAt || "";
+  let start = task.startDate;
+  let end = task.dueDate;
+
+  // If startDate was not provided or was saved identical to dueDate,
+  // but task.createdAt exists, span from createdAt to dueDate.
+  if (created && end && (!start || start === end) && created <= end) {
+    start = created;
+  } else if (!start) {
+    start = created || end || "";
+  }
+
+  if (!end) {
+    end = start || created || "";
+  }
+
+  if (!start && !end) return { actualStart: "", actualEnd: "" };
+
+  const actualStart = start && end ? (start <= end ? start : end) : (start || end);
+  const actualEnd = start && end ? (end >= start ? end : start) : (end || start);
+
+  return { actualStart, actualEnd };
+};
 
 function Calendar() {
-  const { tasks, addTask, updateTask, updateTaskStatus, deleteTask } = useTasks();
+  const { tasks, addTask, updateTask, updateTaskStatus, deleteTask, loadingTasks } = useTasks();
   const { showToast, showConfirm } = useToast();
 
   const [todayStr] = useState(getTodayDateStr);
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [selectedDateStr, setSelectedDateStr] = useState(todayStr);
-
-  // View Mode: 'calendar' (มุมมองปฏิทิน) or 'timeline' (มุมมองไทม์ไลน์)
-  const [viewMode, setViewMode] = useState("calendar");
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Add Task Modal State (Exact match with Image 2)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [addImageFile, setAddImageFile] = useState(null);
   const [addFormData, setAddFormData] = useState({
     title: "",
     description: "",
     dueDate: todayStr,
     status: "Not Started",
     color: DEFAULT_TASK_COLOR,
+    imageUrl: "",
   });
 
   const handleOpenAddModal = (dateStr) => {
+    if (addFormData.imageUrl && addFormData.imageUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(addFormData.imageUrl);
+    }
+    setAddImageFile(null);
     const targetDate = dateStr || selectedDateStr || todayStr;
     setAddFormData({
       title: "",
@@ -65,21 +89,85 @@ function Calendar() {
       dueDate: targetDate,
       status: "Not Started",
       color: DEFAULT_TASK_COLOR,
+      imageUrl: "",
     });
     setIsAddModalOpen(true);
   };
 
   // Edit Task State
   const [editingTask, setEditingTask] = useState(null);
+  const [editImageFile, setEditImageFile] = useState(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editStartDate, setEditStartDate] = useState("");
   const [editDueDate, setEditDueDate] = useState("");
   const [editColor, setEditColor] = useState(DEFAULT_TASK_COLOR);
   const [editStatus, setEditStatus] = useState("Not Started");
+  const [editImageUrl, setEditImageUrl] = useState("");
 
-  // Filter in Timeline View
-  const [timelineStatusFilter, setTimelineStatusFilter] = useState("All");
+  const handleAddImageChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      showToast("รองรับเฉพาะไฟล์รูปภาพ JPG, PNG และ WebP เท่านั้น", "error");
+      return;
+    }
+
+    if (file.size > MAX_IMAGE_SIZE) {
+      showToast("ขนาดไฟล์รูปภาพต้องไม่เกิน 2MB", "error");
+      return;
+    }
+
+    if (addFormData.imageUrl && addFormData.imageUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(addFormData.imageUrl);
+    }
+
+    setAddImageFile(file);
+    const localUrl = URL.createObjectURL(file);
+    setAddFormData((prev) => ({ ...prev, imageUrl: localUrl }));
+    showToast("เลือกรูปภาพเรียบร้อย", "info");
+  };
+
+  const handleAddRemoveImage = () => {
+    if (addFormData.imageUrl && addFormData.imageUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(addFormData.imageUrl);
+    }
+    setAddImageFile(null);
+    setAddFormData((prev) => ({ ...prev, imageUrl: "" }));
+  };
+
+  const handleEditImageChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      showToast("รองรับเฉพาะไฟล์รูปภาพ JPG, PNG และ WebP เท่านั้น", "error");
+      return;
+    }
+
+    if (file.size > MAX_IMAGE_SIZE) {
+      showToast("ขนาดไฟล์รูปภาพต้องไม่เกิน 2MB", "error");
+      return;
+    }
+
+    if (editImageUrl && editImageUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(editImageUrl);
+    }
+
+    setEditImageFile(file);
+    const localUrl = URL.createObjectURL(file);
+    setEditImageUrl(localUrl);
+    showToast("เลือกรูปภาพเรียบร้อย", "info");
+  };
+
+  const handleEditRemoveImage = () => {
+    if (editImageUrl && editImageUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(editImageUrl);
+    }
+    setEditImageFile(null);
+    setEditImageUrl("");
+  };
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -105,38 +193,53 @@ function Calendar() {
     );
   };
 
-  const getFormattedDate = (dayNumber) => {
-    const m = String(month + 1).padStart(2, "0");
-    const d = String(dayNumber).padStart(2, "0");
-    return `${year}-${m}-${d}`;
-  };
-
   // Group tasks for selected date (including tasks that span across dates)
   const tasksForSelectedDate = tasks.filter((t) => {
-    const start = t.startDate || t.dueDate;
-    const end = t.dueDate || t.startDate;
-    if (!start && !end) return false;
-    const actualStart = start || end;
-    const actualEnd = end || start;
+    const { actualStart, actualEnd } = getTaskDateRange(t);
+    if (!actualStart && !actualEnd) return false;
     return selectedDateStr >= actualStart && selectedDateStr <= actualEnd;
   });
 
-  const handleCreateTask = (e) => {
+  const handleCreateTask = async (e) => {
     e.preventDefault();
-    if (!addFormData.title.trim()) return;
+    if (!addFormData.title.trim() || isSubmitting) return;
 
-    addTask({
-      title: addFormData.title.trim(),
-      description: addFormData.description.trim(),
-      dueDate: addFormData.dueDate || selectedDateStr,
-      startDate: addFormData.dueDate || selectedDateStr,
-      priority: "Normal",
-      color: addFormData.color || DEFAULT_TASK_COLOR,
-      status: addFormData.status || "Not Started",
-    });
+    setIsSubmitting(true);
+    try {
+      const createdDate = todayStr;
+      const targetDueDate = addFormData.dueDate || selectedDateStr || todayStr;
+      const startDate = createdDate <= targetDueDate ? createdDate : targetDueDate;
+      const dueDate = targetDueDate >= createdDate ? targetDueDate : createdDate;
 
-    showToast(`สร้างงานใหม่ "${addFormData.title.trim()}" สำเร็จ ✨`, 'success');
-    setIsAddModalOpen(false);
+      const payload = {
+        title: addFormData.title.trim(),
+        description: addFormData.description.trim(),
+        startDate,
+        dueDate,
+        priority: "Normal",
+        color: addFormData.color || DEFAULT_TASK_COLOR,
+        status: addFormData.status || "Not Started",
+        imageUrl: addFormData.imageUrl || "",
+        imageFile: addImageFile,
+      };
+
+      if (payload.imageUrl && payload.imageUrl.startsWith("blob:")) {
+        delete payload.imageUrl;
+      }
+
+      await addTask(payload);
+
+      showToast(`สร้างงานใหม่ "${addFormData.title.trim()}" สำเร็จ`, 'success');
+      if (addFormData.imageUrl && addFormData.imageUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(addFormData.imageUrl);
+      }
+      setAddImageFile(null);
+      setIsAddModalOpen(false);
+    } catch (error) {
+      showToast(error.message || 'เกิดข้อผิดพลาดในการสร้างงาน', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDeleteTask = (id, title) => {
@@ -146,81 +249,86 @@ function Calendar() {
       confirmText: 'ยืนยันการลบ',
       cancelText: 'ยกเลิก',
       type: 'danger',
-      onConfirm: () => {
-        deleteTask(id);
-        showToast(`ลบงาน "${title}" เรียบร้อยแล้ว 🗑️`, 'info');
+      onConfirm: async () => {
+        try {
+          await deleteTask(id);
+          showToast(`ลบงาน "${title}" เรียบร้อยแล้ว`, 'info');
+        } catch (error) {
+          showToast(error.message || 'เกิดข้อผิดพลาดในการลบงาน', 'error');
+        }
       },
     });
   };
 
   const handleOpenEditModal = (task) => {
+    const { actualStart, actualEnd } = getTaskDateRange(task);
+    if (editImageUrl && editImageUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(editImageUrl);
+    }
+    setEditImageFile(null);
     setEditingTask(task);
     setEditTitle(task.title || "");
     setEditDescription(task.description || "");
-    setEditStartDate(task.startDate || task.dueDate || selectedDateStr);
-    setEditDueDate(task.dueDate || task.startDate || selectedDateStr);
+    setEditStartDate(actualStart || selectedDateStr);
+    setEditDueDate(actualEnd || selectedDateStr);
     setEditColor(task.color || DEFAULT_TASK_COLOR);
     setEditStatus(task.status || "Not Started");
+    setEditImageUrl(task.imageUrl || "");
   };
 
-  const handleSaveEdit = (e) => {
+  const handleSaveEdit = async (e) => {
     e.preventDefault();
-    if (!editingTask || !editTitle.trim()) return;
+    if (!editingTask || !editTitle.trim() || isSubmitting) return;
 
-    const startDate = editStartDate || selectedDateStr;
-    const dueDate = editDueDate || startDate;
+    setIsSubmitting(true);
+    try {
+      const startDate = editStartDate || selectedDateStr;
+      const dueDate = editDueDate || startDate;
 
-    updateTask(editingTask.id, {
-      title: editTitle.trim(),
-      description: editDescription.trim(),
-      startDate: startDate <= dueDate ? startDate : dueDate,
-      dueDate: startDate <= dueDate ? dueDate : startDate,
-      color: editColor,
-      status: editStatus,
-    });
+      const payload = {
+        title: editTitle.trim(),
+        description: editDescription.trim(),
+        startDate: startDate <= dueDate ? startDate : dueDate,
+        dueDate: startDate <= dueDate ? dueDate : startDate,
+        color: editColor,
+        status: editStatus,
+        imageUrl: editImageUrl || "",
+        imageFile: editImageFile,
+      };
 
-    showToast(`บันทึกการแก้ไข "${editTitle.trim()}" แล้ว ✏️`, 'info');
-    setEditingTask(null);
-  };
+      if (payload.imageUrl && payload.imageUrl.startsWith("blob:")) {
+        delete payload.imageUrl;
+      }
 
-  const handleToggleTaskStatus = (task) => {
-    const isCompleted = (task.status || "Not Started") === "Completed";
-    const nextStatus = isCompleted ? "In Progress" : "Completed";
-    updateTaskStatus(task.id, nextStatus);
-    if (!isCompleted) {
-      showToast(`🎉 ทำงาน "${task.title}" เสร็จสิ้นแล้ว!`, "celebrate");
-    } else {
-      showToast(`สลับสถานะ "${task.title}" กลับเป็นกำลังทำ`, "info");
+      await updateTask(editingTask.id, payload);
+
+      showToast(`บันทึกการแก้ไข "${editTitle.trim()}" สำเร็จ`, 'info');
+      if (editImageUrl && editImageUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(editImageUrl);
+      }
+      setEditImageFile(null);
+      setEditingTask(null);
+    } catch (error) {
+      showToast(error.message || 'เกิดข้อผิดพลาดในการบันทึกการแก้ไข', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  // Tasks in current month
-  const currentMonthPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
-  const tasksInCurrentMonth = tasks.filter((t) => {
-    const start = t.startDate || t.dueDate;
-    const end = t.dueDate || t.startDate;
-    return (
-      (start && start.startsWith(currentMonthPrefix)) ||
-      (end && end.startsWith(currentMonthPrefix))
-    );
-  });
-
-  // Filtered tasks for timeline
-  const filteredTimelineTasks = tasksInCurrentMonth.filter((t) => {
-    return timelineStatusFilter === "All" || t.status === timelineStatusFilter;
-  });
-
-  // Metrics for current month
-  const totalMonthTasks = tasksInCurrentMonth.length;
-  const notStartedMonthTasks = tasksInCurrentMonth.filter(
-    (t) => t.status === "Not Started",
-  ).length;
-  const inProgressMonthTasks = tasksInCurrentMonth.filter(
-    (t) => t.status === "In Progress",
-  ).length;
-  const completedMonthTasks = tasksInCurrentMonth.filter(
-    (t) => t.status === "Completed",
-  ).length;
+  const handleToggleTaskStatus = async (task) => {
+    const isCompleted = (task.status || "Not Started") === "Completed";
+    const nextStatus = isCompleted ? "In Progress" : "Completed";
+    try {
+      await updateTaskStatus(task.id, nextStatus);
+      if (!isCompleted) {
+        showToast(`ทำงาน "${task.title}" เสร็จสิ้นแล้ว`, "celebrate");
+      } else {
+        showToast(`สลับสถานะ "${task.title}" กลับเป็นกำลังทำ`, "info");
+      }
+    } catch (error) {
+      showToast(error.message || 'เกิดข้อผิดพลาดในการเปลี่ยนสถานะ', "error");
+    }
+  };
 
   // Calendar cells generation with stacked task bars
   const calendarCells = useMemo(() => {
@@ -235,10 +343,8 @@ function Calendar() {
       const d = String(day).padStart(2, "0");
       const dateStr = `${year}-${m}-${d}`;
       const dayTasks = tasks.filter((t) => {
-        const start = t.startDate || t.dueDate;
-        const end = t.dueDate || t.startDate;
-        const actualStart = start || end;
-        const actualEnd = end || start;
+        const { actualStart, actualEnd } = getTaskDateRange(t);
+        if (!actualStart && !actualEnd) return false;
         return dateStr >= actualStart && dateStr <= actualEnd;
       });
 
@@ -270,26 +376,32 @@ function Calendar() {
 
           {/* Stacked Task Bars Inside Cell */}
           <div className="cell-tasks-stack">
-            {visibleTasks.map((t) => (
-              <div
-                key={t.id}
-                className={`cell-task-pill status-${(t.status || "Not Started").toLowerCase().replace(" ", "-")}`}
-                style={{
-                  borderLeftColor: t.color || DEFAULT_TASK_COLOR,
-                  backgroundColor: t.color ? `${t.color}22` : undefined,
-                }}
-                title={`${t.title} (${t.status || "Not Started"})`}
-              >
-                <span
-                  className="pill-dot"
+            {visibleTasks.map((t) => {
+              const { actualStart, actualEnd } = getTaskDateRange(t);
+              const isMultiDay = actualStart && actualEnd && actualStart !== actualEnd;
+              const isStartDay = dateStr === actualStart;
+              const isEndDay = dateStr === actualEnd;
+              return (
+                <div
+                  key={t.id}
+                  className={`cell-task-pill status-${(t.status || "Not Started").toLowerCase().replace(" ", "-")} ${isMultiDay ? "multi-day" : ""} ${isStartDay ? "span-start" : ""} ${isEndDay ? "span-end" : ""}`}
                   style={{
-                    backgroundColor: t.color || DEFAULT_TASK_COLOR,
-                    boxShadow: `0 0 6px ${t.color || DEFAULT_TASK_COLOR}`,
+                    borderLeftColor: t.color || DEFAULT_TASK_COLOR,
+                    backgroundColor: t.color ? `${t.color}22` : undefined,
                   }}
-                />
-                <span className="pill-title">{t.title}</span>
-              </div>
-            ))}
+                  title={`${t.title} (${actualStart === actualEnd ? actualStart : `${actualStart} ถึง ${actualEnd}`}) - ${t.status || "Not Started"}`}
+                >
+                  <span
+                    className="pill-dot"
+                    style={{
+                      backgroundColor: t.color || DEFAULT_TASK_COLOR,
+                      boxShadow: `0 0 6px ${t.color || DEFAULT_TASK_COLOR}`,
+                    }}
+                  />
+                  <span className="pill-title">{t.title}</span>
+                </div>
+              );
+            })}
 
             {hiddenCount > 0 && (
               <div className="cell-more-badge">+{hiddenCount} งานเพิ่มเติม</div>
@@ -306,75 +418,36 @@ function Calendar() {
       {/* Top Header */}
       <div className="calendar-header">
         <div>
-          <div className="calendar-tag">CALENDAR & TIMELINE</div>
-          <h1 className="page-title">Calendar & Timeline</h1>
+          <div className="calendar-tag">CALENDAR</div>
+          <h1 className="page-title">Calendar</h1>
           <p className="page-desc">
-            ปฏิทินงานและไทม์ไลน์ ติดตามกำหนดส่ง
-            และซ้อนงานหลายรายการได้อย่างเป็นระเบียบ
+            ปฏิทินงาน ติดตามกำหนดส่งและแผนงานประจำวัน
           </p>
         </div>
 
-        {/* Controls: View Mode Switcher + Month Navigation */}
+        {/* Controls: Month Navigation */}
         <div className="calendar-top-actions">
-          {/* View Mode Switcher */}
-          <div className="view-mode-toggle">
-            <button
-              className={`view-toggle-btn ${viewMode === "calendar" ? "active" : ""}`}
-              onClick={() => setViewMode("calendar")}
-              title="มุมมองปฏิทินรายเดือน"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="15"
-                height="15"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect width="18" height="18" x="3" y="4" rx="2" />
-                <line x1="16" y1="2" x2="16" y2="6" />
-                <line x1="8" y1="2" x2="8" y2="6" />
-                <line x1="3" x2="21" y1="10" y2="10" />
-              </svg>
-              <span>ปฏิทิน</span>
-            </button>
-
-            <button
-              className={`view-toggle-btn ${viewMode === "timeline" ? "active" : ""}`}
-              onClick={() => setViewMode("timeline")}
-              title="มุมมองไทม์ไลน์รายวัน/เดือน"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="15"
-                height="15"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <line x1="4" x2="4" y1="3" y2="21" />
-                <rect width="8" height="4" x="7" y="5" rx="1" />
-                <rect width="10" height="4" x="9" y="11" rx="1" />
-                <rect width="7" height="4" x="12" y="17" rx="1" />
-              </svg>
-              <span>ไทม์ไลน์</span>
-            </button>
-          </div>
-
           {/* Month Navigation */}
           <div className="calendar-nav-controls">
             <button
               className="nav-btn"
               onClick={handlePrevMonth}
               title="เดือนก่อนหน้า"
+              aria-label="เดือนก่อนหน้า"
             >
-              ◀
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
             </button>
             <span className="current-month-display">
               {monthNames[month]} {year + 543}
@@ -383,8 +456,21 @@ function Calendar() {
               className="nav-btn"
               onClick={handleNextMonth}
               title="เดือนถัดไป"
+              aria-label="เดือนถัดไป"
             >
-              ▶
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
             </button>
             <button className="today-btn" onClick={handleToday}>
               วันนี้
@@ -393,9 +479,8 @@ function Calendar() {
         </div>
       </div>
 
-      {/* VIEW MODE 1: CALENDAR VIEW */}
-      {viewMode === "calendar" && (
-        <div className="calendar-layout">
+      {/* Calendar Layout */}
+      <div className="calendar-layout">
           {/* Calendar Grid Card */}
           <div className="calendar-grid-card">
             <div className="weekdays-row">
@@ -458,7 +543,14 @@ function Calendar() {
 
             {/* Tasks List for Date (Vertical Timeline Rail) */}
             <div className="date-tasks-list">
-              {tasksForSelectedDate.length === 0 ? (
+              {loadingTasks && tasks.length === 0 ? (
+                <div className="no-tasks-date">
+                  <p>กำลังโหลดแผนงาน...</p>
+                  <span className="empty-sub">
+                    ระบบกำลังดึงข้อมูลจาก Supabase
+                  </span>
+                </div>
+              ) : tasksForSelectedDate.length === 0 ? (
                 <div className="no-tasks-date">
                   <div className="no-tasks-icon-box">
                     <svg
@@ -587,21 +679,68 @@ function Calendar() {
                           <p className="date-task-desc">{task.description}</p>
                         )}
 
-                        {task.startDate &&
-                          task.dueDate &&
-                          task.startDate !== task.dueDate && (
-                            <div className="date-task-range">
-                              📅 {task.startDate} ถึง {task.dueDate}
-                            </div>
-                          )}
+                        {(() => {
+                          const { actualStart, actualEnd } = getTaskDateRange(task);
+                          if (actualStart && actualEnd && actualStart !== actualEnd) {
+                            return (
+                              <div className="date-task-range">
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="12"
+                                  height="12"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  style={{
+                                    marginRight: "5px",
+                                    display: "inline-block",
+                                    verticalAlign: "middle",
+                                  }}
+                                >
+                                  <rect width="18" height="18" x="3" y="4" rx="2" />
+                                  <line x1="16" x2="16" y1="2" y2="6" />
+                                  <line x1="8" x2="8" y1="2" y2="6" />
+                                  <line x1="3" x2="21" y1="10" y2="10" />
+                                </svg>
+                                <span>{actualStart} ถึง {actualEnd}</span>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+
+                        {task.imageUrl && (
+                          <div className="calendar-task-image-wrap">
+                            <TaskImage
+                              src={task.imageUrl}
+                              alt={task.title}
+                              className="calendar-task-thumbnail"
+                              onClick={(_e, url) => setSelectedPreviewImage(url || task.imageUrl)}
+                              title="คลิกเพื่อดูรูปภาพขนาดเต็ม"
+                            />
+                          </div>
+                        )}
 
                         <div className="timeline-card-footer">
                           <select
                             className={`date-status-select ${(task.status || "Not Started").toLowerCase().replace(" ", "-")}`}
                             value={task.status || "Not Started"}
-                            onChange={(e) =>
-                              updateTaskStatus(task.id, e.target.value)
-                            }
+                            onChange={async (e) => {
+                              const newStatus = e.target.value;
+                              try {
+                                await updateTaskStatus(task.id, newStatus);
+                                if (newStatus === "Completed") {
+                                  showToast(`ทำงาน "${task.title}" เสร็จสิ้นแล้ว!`, "celebrate");
+                                } else {
+                                  showToast(`เปลี่ยนสถานะงานเป็น "${newStatus}"`, "info");
+                                }
+                              } catch (error) {
+                                showToast(error.message || 'เกิดข้อผิดพลาดในการเปลี่ยนสถานะงาน', "error");
+                              }
+                            }}
                           >
                             <option value="Not Started">Not Started</option>
                             <option value="In Progress">In Progress</option>
@@ -616,233 +755,8 @@ function Calendar() {
             </div>
           </div>
         </div>
-      )}
 
-      {/* VIEW MODE 2: TIMELINE VIEW (STACKED MULTI-ROW GANTT BOARD) */}
-      {viewMode === "timeline" && (
-        <div className="timeline-view-wrapper">
-          {/* Timeline Toolbar & Metrics */}
-          <div className="timeline-toolbar">
-            <div className="timeline-metrics">
-              <span className="metric-chip total">
-                งานทั้งหมดในเดือนนี้: <strong>{totalMonthTasks}</strong>
-              </span>
-              <span className="metric-chip notstarted">
-                รอดำเนินการ: <strong>{notStartedMonthTasks}</strong>
-              </span>
-              <span className="metric-chip inprogress">
-                กำลังทำ: <strong>{inProgressMonthTasks}</strong>
-              </span>
-              <span className="metric-chip completed">
-                เสร็จสิ้น: <strong>{completedMonthTasks}</strong>
-              </span>
-            </div>
 
-            {/* Filter Dropdowns */}
-            <div className="timeline-filters">
-              <div className="filter-group">
-                <label>สถานะ:</label>
-                <select
-                  value={timelineStatusFilter}
-                  onChange={(e) => setTimelineStatusFilter(e.target.value)}
-                >
-                  <option value="All">ทั้งหมด</option>
-                  <option value="Not Started">Not Started</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Completed">Completed</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Timeline Track Card */}
-          <div className="timeline-track-card">
-            <div className="timeline-track-header-row">
-              <div>
-                <h3>
-                  ไทม์ไลน์รายวัน ({monthNames[month]} {year + 543})
-                </h3>
-                <p className="timeline-subtitle">
-                  งานจะซ้อนกันในแต่ละวัน
-                  สามารถเลื่อนดูความคืบหน้าแบบพาโนรามาได้ตลอดทั้งเดือน
-                </p>
-              </div>
-              <span className="timeline-hint">
-                เลื่อนซ้าย-ขวาเพื่อดูกำหนดการ
-              </span>
-            </div>
-
-            <div className="timeline-days-scroll-area">
-              <div className="timeline-days-columns">
-                {Array.from({ length: totalDays }, (_, i) => i + 1).map(
-                  (day) => {
-                    const dateStr = getFormattedDate(day);
-                    const dayTasks = filteredTimelineTasks.filter((t) => {
-                      const start = t.startDate || t.dueDate;
-                      const end = t.dueDate || t.startDate;
-                      const actualStart = start || end;
-                      const actualEnd = end || start;
-                      return dateStr >= actualStart && dateStr <= actualEnd;
-                    });
-
-                    const isToday = dateStr === todayStr;
-                    const isSelected = dateStr === selectedDateStr;
-                    const dayOfWeekIndex = new Date(year, month, day).getDay();
-                    const isWeekend =
-                      dayOfWeekIndex === 0 || dayOfWeekIndex === 6;
-
-                    return (
-                      <div
-                        key={dateStr}
-                        className={`timeline-day-column ${isToday ? "today" : ""} ${isSelected ? "selected" : ""} ${isWeekend ? "weekend" : ""}`}
-                      >
-                        {/* Column Header */}
-                        <div
-                          className="day-column-header"
-                          onClick={() => setSelectedDateStr(dateStr)}
-                        >
-                          <span className="day-name">
-                            {fullDaysOfWeek[dayOfWeekIndex].slice(0, 2)}
-                          </span>
-                          <span className="day-number">{day}</span>
-                          <button
-                            type="button"
-                            className="quick-column-add"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenAddModal(dateStr);
-                            }}
-                            title={`เพิ่มงานในวันที่ ${day}`}
-                          >
-                            +
-                          </button>
-                        </div>
-
-                        {/* Stacked Task Lane */}
-                        <div className="day-tasks-lane">
-                          {dayTasks.length === 0 ? (
-                            <div className="lane-empty-placeholder">-</div>
-                          ) : (
-                            dayTasks.map((task) => (
-                              <div
-                                key={task.id}
-                                className={`timeline-task-card status-${(task.status || "Not Started").toLowerCase().replace(" ", "-")} ${(task.status || "Not Started") === "Completed" ? "is-completed" : ""}`}
-                                style={{
-                                  borderLeft:
-                                    (task.status || "Not Started") === "Completed"
-                                      ? "3px solid #10b981"
-                                      : `3px solid ${task.color || DEFAULT_TASK_COLOR}`,
-                                }}
-                                title={`${task.title} - ${task.status || "Not Started"}`}
-                              >
-                                <div className="card-top">
-                                  <div className="timeline-task-title-line">
-                                    <button
-                                      type="button"
-                                      className={`task-quick-check-btn ${(task.status || "Not Started") === "Completed" ? "checked" : ""}`}
-                                      onClick={() => handleToggleTaskStatus(task)}
-                                      title={
-                                        (task.status || "Not Started") === "Completed"
-                                          ? "ทำเครื่องหมายว่ายังไม่เสร็จ"
-                                          : "คลิกเพื่อจบงานทันที"
-                                      }
-                                      aria-label={
-                                        (task.status || "Not Started") === "Completed"
-                                          ? "ทำเครื่องหมายว่ายังไม่เสร็จ"
-                                          : "คลิกเพื่อจบงานทันที"
-                                      }
-                                    >
-                                      {(task.status || "Not Started") === "Completed" && (
-                                        <svg
-                                          xmlns="http://www.w3.org/2000/svg"
-                                          width="10"
-                                          height="10"
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="3.5"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        >
-                                          <polyline points="20 6 9 17 4 12" />
-                                        </svg>
-                                      )}
-                                    </button>
-                                    <span
-                                      className={`task-title-clamp ${(task.status || "Not Started") === "Completed" ? "done" : ""}`}
-                                    >
-                                      {task.title}
-                                    </span>
-                                  </div>
-                                  <div className="timeline-card-actions">
-                                    <button
-                                      type="button"
-                                      className="timeline-mini-btn edit-btn"
-                                      onClick={() => handleOpenEditModal(task)}
-                                      title="แก้ไขงานนี้"
-                                    >
-                                      <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        width="11"
-                                        height="11"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      >
-                                        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                                        <path d="m15 5 4 4" />
-                                      </svg>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="timeline-mini-btn delete-btn"
-                                      onClick={() =>
-                                        handleDeleteTask(task.id, task.title)
-                                      }
-                                      title="ลบงานนี้"
-                                    >
-                                      ✕
-                                    </button>
-                                  </div>
-                                </div>
-
-                                {task.description && (
-                                  <span className="card-desc-clamp">
-                                    {task.description}
-                                  </span>
-                                )}
-
-                                <div className="card-actions-row">
-                                  <select
-                                    className={`timeline-status-badge ${(task.status || "Not Started").toLowerCase().replace(" ", "-")}`}
-                                    value={task.status || "Not Started"}
-                                    onChange={(e) =>
-                                      updateTaskStatus(task.id, e.target.value)
-                                    }
-                                  >
-                                    <option value="Not Started">
-                                      รอดำเนินการ
-                                    </option>
-                                    <option value="In Progress">กำลังทำ</option>
-                                    <option value="Completed">เสร็จสิ้น</option>
-                                  </select>
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    );
-                  },
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Add Task Modal (Image 2) */}
       {isAddModalOpen && (
@@ -893,6 +807,52 @@ function Calendar() {
                     })
                   }
                 />
+              </div>
+
+              <div className="form-group">
+                <label>แนบรูปภาพประกอบ</label>
+                {addFormData.imageUrl ? (
+                  <div className="task-image-preview-box">
+                    <TaskImage
+                      src={addFormData.imageUrl}
+                      alt="Preview"
+                      className="preview-image"
+                    />
+                    <button
+                      type="button"
+                      className="remove-image-btn"
+                      onClick={handleAddRemoveImage}
+                      title="ลบรูปภาพ"
+                    >
+                      ✕ ลบรูปภาพ
+                    </button>
+                  </div>
+                ) : (
+                  <label className="image-upload-dropzone">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleAddImageChange}
+                      style={{ display: "none" }}
+                    />
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+                      <circle cx="9" cy="9" r="2" />
+                      <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                    </svg>
+                    <span>คลิกเพื่อแนบรูปภาพ (PNG, JPG, WebP ไม่เกิน 2MB)</span>
+                  </label>
+                )}
               </div>
 
               <div className="form-row">
@@ -955,8 +915,8 @@ function Calendar() {
                 >
                   ยกเลิก
                 </button>
-                <button type="submit" className="btn-submit">
-                  สร้างงานใหม่
+                <button type="submit" className="btn-submit" disabled={isSubmitting}>
+                  {isSubmitting ? "กำลังสร้าง..." : "สร้างงานใหม่"}
                 </button>
               </div>
             </form>
@@ -1002,6 +962,52 @@ function Calendar() {
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                 />
+              </div>
+
+              <div className="form-group">
+                <label>แนบรูปภาพประกอบ</label>
+                {editImageUrl ? (
+                  <div className="task-image-preview-box">
+                    <TaskImage
+                      src={editImageUrl}
+                      alt="Preview"
+                      className="preview-image"
+                    />
+                    <button
+                      type="button"
+                      className="remove-image-btn"
+                      onClick={handleEditRemoveImage}
+                      title="ลบรูปภาพ"
+                    >
+                      ✕ ลบรูปภาพ
+                    </button>
+                  </div>
+                ) : (
+                  <label className="image-upload-dropzone">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleEditImageChange}
+                      style={{ display: "none" }}
+                    />
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+                      <circle cx="9" cy="9" r="2" />
+                      <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                    </svg>
+                    <span>คลิกเพื่อแนบรูปภาพ (PNG, JPG, WebP ไม่เกิน 2MB)</span>
+                  </label>
+                )}
               </div>
 
               <div className="form-row">
@@ -1064,11 +1070,38 @@ function Calendar() {
                 >
                   ยกเลิก
                 </button>
-                <button type="submit" className="btn-submit">
-                  บันทึกการแก้ไข
+                <button type="submit" className="btn-submit" disabled={isSubmitting}>
+                  {isSubmitting ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Fullscreen Lightbox Modal */}
+      {selectedPreviewImage && (
+        <div
+          className="image-lightbox-backdrop"
+          onClick={() => setSelectedPreviewImage(null)}
+        >
+          <div
+            className="image-lightbox-content"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="lightbox-close-btn"
+              onClick={() => setSelectedPreviewImage(null)}
+              title="ปิด"
+            >
+              ✕
+            </button>
+            <TaskImage
+              src={selectedPreviewImage}
+              alt="Full Preview"
+              className="lightbox-image"
+            />
           </div>
         </div>
       )}

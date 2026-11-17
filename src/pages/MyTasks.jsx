@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { useTasks } from '../context/useTasks';
 import { useToast } from '../context/useToast';
 import { TASK_COLORS, DEFAULT_TASK_COLOR } from '../constants/taskColors';
+import TaskImage from '../components/TaskImage';
+import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_SIZE } from '../lib/taskStorage';
 import './MyTasks.css';
 
 function MyTasks() {
-  const { tasks, addTask, updateTask, deleteTask, updateTaskStatus } = useTasks();
+  const { tasks, addTask, updateTask, deleteTask, updateTaskStatus, loadingTasks } = useTasks();
   const { showToast, showConfirm } = useToast();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -14,6 +16,9 @@ function MyTasks() {
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [imageFile, setImageFile] = useState(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -23,11 +28,13 @@ function MyTasks() {
     priority: 'Normal',
     color: DEFAULT_TASK_COLOR,
     status: 'Not Started',
+    imageUrl: '',
   });
 
   const [todayStr] = useState(() => new Date().toISOString().split('T')[0]);
 
   const handleOpenAddModal = () => {
+    setImageFile(null);
     setEditingTask(null);
     setFormData({
       title: '',
@@ -36,40 +43,96 @@ function MyTasks() {
       priority: 'Normal',
       color: DEFAULT_TASK_COLOR,
       status: 'Not Started',
+      imageUrl: '',
     });
     setIsModalOpen(true);
   };
 
   const handleOpenEditModal = (task) => {
+    setImageFile(null);
     setEditingTask(task);
     setFormData({
       title: task.title,
       description: task.description || '',
       dueDate: task.dueDate || '',
-      priority: 'Normal',
+      priority: task.priority || 'Normal',
       color: task.color || DEFAULT_TASK_COLOR,
       status: task.status || 'Not Started',
+      imageUrl: task.imageUrl || '',
     });
     setIsModalOpen(true);
   };
 
   const handleCloseModal = () => {
+    if (formData.imageUrl && formData.imageUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(formData.imageUrl);
+    }
+    setImageFile(null);
     setIsModalOpen(false);
     setEditingTask(null);
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!formData.title.trim()) return;
+  const handleImageChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    if (editingTask) {
-      updateTask(editingTask.id, formData);
-      showToast(`บันทึกการแก้ไข "${formData.title}" เรียบร้อย ✏️`, 'info');
-    } else {
-      addTask(formData);
-      showToast(`สร้างงานใหม่ "${formData.title}" สำเร็จ ✨`, 'success');
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      showToast('รองรับเฉพาะไฟล์รูปภาพ JPG, PNG และ WebP เท่านั้น', 'error');
+      return;
     }
-    handleCloseModal();
+
+    if (file.size > MAX_IMAGE_SIZE) {
+      showToast('ขนาดไฟล์รูปภาพต้องไม่เกิน 2MB', 'error');
+      return;
+    }
+
+    if (formData.imageUrl && formData.imageUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(formData.imageUrl);
+    }
+
+    setImageFile(file);
+    const localUrl = URL.createObjectURL(file);
+    setFormData((prev) => ({ ...prev, imageUrl: localUrl }));
+    showToast('เลือกรูปภาพเรียบร้อย', 'info');
+  };
+
+  const handleRemoveImage = () => {
+    if (formData.imageUrl && formData.imageUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(formData.imageUrl);
+    }
+    setImageFile(null);
+    setFormData((prev) => ({ ...prev, imageUrl: '' }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!formData.title.trim() || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      const payload = {
+        ...formData,
+        imageFile,
+      };
+
+      // หากเป็น blob url ชั่วคราว ให้ตัดออกเพื่อส่ง storage path
+      if (payload.imageUrl && payload.imageUrl.startsWith('blob:')) {
+        delete payload.imageUrl;
+      }
+
+      if (editingTask) {
+        await updateTask(editingTask.id, payload);
+        showToast(`บันทึกการแก้ไข "${formData.title}" เรียบร้อย`, 'info');
+      } else {
+        await addTask(payload);
+        showToast(`สร้างงานใหม่ "${formData.title}" สำเร็จ`, 'success');
+      }
+      handleCloseModal();
+    } catch (error) {
+      showToast(error.message || 'เกิดข้อผิดพลาดในการบันทึกงาน', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDelete = (id, title) => {
@@ -79,22 +142,29 @@ function MyTasks() {
       confirmText: 'ยืนยันการลบ',
       cancelText: 'ยกเลิก',
       type: 'danger',
-      onConfirm: () => {
-        deleteTask(id);
-        showToast(`ลบงาน "${title}" เรียบร้อยแล้ว 🗑️`, 'info');
+      onConfirm: async () => {
+        try {
+          await deleteTask(id);
+          showToast(`ลบงาน "${title}" เรียบร้อยแล้ว`, 'info');
+        } catch (error) {
+          showToast(error.message || 'เกิดข้อผิดพลาดในการลบงาน', 'error');
+        }
       },
     });
   };
 
-  const handleToggleStatus = (task) => {
+  const handleToggleStatus = async (task) => {
     const isCompleted = (task.status || 'Not Started') === 'Completed';
     const nextStatus = isCompleted ? 'In Progress' : 'Completed';
-    updateTaskStatus(task.id, nextStatus);
-
-    if (!isCompleted) {
-      showToast(`🎉 ยินดีด้วย! คุณทำงาน "${task.title}" เสร็จสิ้นแล้ว!`, 'celebrate');
-    } else {
-      showToast(`สลับสถานะงาน "${task.title}" กลับเป็นกำลังทำ ⚡`, 'info');
+    try {
+      await updateTaskStatus(task.id, nextStatus);
+      if (!isCompleted) {
+        showToast(`ยินดีด้วย! คุณทำงาน "${task.title}" เสร็จสิ้นแล้ว!`, 'celebrate');
+      } else {
+        showToast(`สลับสถานะงาน "${task.title}" กลับเป็นกำลังทำ`, 'info');
+      }
+    } catch (error) {
+      showToast(error.message || 'เกิดข้อผิดพลาดในการเปลี่ยนสถานะงาน', 'error');
     }
   };
 
@@ -209,7 +279,12 @@ function MyTasks() {
 
       {/* Task Cards List */}
       <div className="tasks-grid">
-        {filteredTasks.length === 0 ? (
+        {loadingTasks && tasks.length === 0 ? (
+          <div className="empty-state-card">
+            <h3>กำลังโหลดรายการงาน...</h3>
+            <p>กรุณารอสักครู่ ระบบกำลังดึงข้อมูลจาก Supabase</p>
+          </div>
+        ) : filteredTasks.length === 0 ? (
           <div className="empty-state-card">
             <h3>ไม่พบงานที่ตรงกับเงื่อนไข</h3>
             <p>ลองปรับคำค้นหา หรือกดปุ่ม "+ สร้างงานใหม่" เพื่อสร้างรายการ</p>
@@ -312,18 +387,34 @@ function MyTasks() {
                 <p className="task-card-desc">{task.description}</p>
               )}
 
+              {task.imageUrl && (
+                <div className="task-card-image-wrap">
+                  <TaskImage
+                    src={task.imageUrl}
+                    alt={task.title}
+                    className="task-card-thumbnail"
+                    onClick={(_e, url) => setSelectedPreviewImage(url || task.imageUrl)}
+                    title="คลิกเพื่อดูรูปภาพขนาดเต็ม"
+                  />
+                </div>
+              )}
+
               <div className="task-card-footer">
                 <span className="status-label">สถานะ:</span>
                 <select
                   className={`status-select-pill ${(task.status || 'Not Started').toLowerCase().replace(' ', '-')}`}
                   value={task.status || 'Not Started'}
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const newStatus = e.target.value;
-                    updateTaskStatus(task.id, newStatus);
-                    if (newStatus === 'Completed') {
-                      showToast(`🎉 ทำงาน "${task.title}" เสร็จสิ้นแล้ว!`, 'celebrate');
-                    } else {
-                      showToast(`เปลี่ยนสถานะงานเป็น "${newStatus}"`, 'info');
+                    try {
+                      await updateTaskStatus(task.id, newStatus);
+                      if (newStatus === 'Completed') {
+                        showToast(`ทำงาน "${task.title}" เสร็จสิ้นแล้ว!`, 'celebrate');
+                      } else {
+                        showToast(`เปลี่ยนสถานะงานเป็น "${newStatus}"`, 'info');
+                      }
+                    } catch (error) {
+                      showToast(error.message || 'เกิดข้อผิดพลาดในการเปลี่ยนสถานะงาน', 'error');
                     }
                   }}
                 >
@@ -367,6 +458,52 @@ function MyTasks() {
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 />
+              </div>
+
+              <div className="form-group">
+                <label>แนบรูปภาพประกอบ</label>
+                {formData.imageUrl ? (
+                  <div className="task-image-preview-box">
+                    <TaskImage
+                      src={formData.imageUrl}
+                      alt="Preview"
+                      className="preview-image"
+                    />
+                    <button
+                      type="button"
+                      className="remove-image-btn"
+                      onClick={handleRemoveImage}
+                      title="ลบรูปภาพ"
+                    >
+                      ✕ ลบรูปภาพ
+                    </button>
+                  </div>
+                ) : (
+                  <label className="image-upload-dropzone">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleImageChange}
+                      style={{ display: "none" }}
+                    />
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+                      <circle cx="9" cy="9" r="2" />
+                      <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                    </svg>
+                    <span>คลิกเพื่อแนบรูปภาพ (PNG, JPG, WebP ไม่เกิน 2MB)</span>
+                  </label>
+                )}
               </div>
 
               <div className="form-row">
@@ -413,11 +550,38 @@ function MyTasks() {
                 <button type="button" className="btn-cancel" onClick={handleCloseModal}>
                   ยกเลิก
                 </button>
-                <button type="submit" className="btn-submit">
-                  {editingTask ? 'บันทึกการแก้ไข' : 'สร้างงานใหม่'}
+                <button type="submit" className="btn-submit" disabled={isSubmitting}>
+                  {isSubmitting ? 'กำลังบันทึก...' : (editingTask ? 'บันทึกการแก้ไข' : 'สร้างงานใหม่')}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Fullscreen Lightbox Modal */}
+      {selectedPreviewImage && (
+        <div
+          className="image-lightbox-backdrop"
+          onClick={() => setSelectedPreviewImage(null)}
+        >
+          <div
+            className="image-lightbox-content"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="lightbox-close-btn"
+              onClick={() => setSelectedPreviewImage(null)}
+              title="ปิด"
+            >
+              ✕
+            </button>
+            <TaskImage
+              src={selectedPreviewImage}
+              alt="Full Preview"
+              className="lightbox-image"
+            />
           </div>
         </div>
       )}

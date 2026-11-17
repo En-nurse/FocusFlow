@@ -12,7 +12,6 @@ function Profile() {
   const [formData, setFormData] = useState({
     name: user.name || '',
     email: user.email || '',
-    phone: user.phone || '',
     bio: user.bio || '',
   });
 
@@ -26,7 +25,7 @@ function Profile() {
       reader.onloadend = () => {
         setAvatar(reader.result);
         updateUser({ avatarUrl: reader.result });
-        showToast('อัปโหลดรูปโปรไฟล์ใหม่เรียบร้อย 📷', 'success');
+        showToast('อัปโหลดรูปโปรไฟล์ใหม่เรียบร้อย', 'success');
       };
       reader.readAsDataURL(file);
     }
@@ -42,7 +41,7 @@ function Profile() {
     e.preventDefault();
     updateUser({ ...formData, avatarUrl: avatar });
     setSaveSuccess(true);
-    showToast('บันทึกข้อมูลส่วนตัวเรียบร้อยแล้ว ✅', 'success');
+    showToast('บันทึกข้อมูลส่วนตัวเรียบร้อยแล้ว', 'success');
     setTimeout(() => {
       setSaveSuccess(false);
     }, 3000);
@@ -104,10 +103,6 @@ function Profile() {
               <span className="meta-value">{formData.email}</span>
             </div>
             <div className="meta-item">
-              <span className="meta-label">เบอร์โทรศัพท์</span>
-              <span className="meta-value">{formData.phone}</span>
-            </div>
-            <div className="meta-item">
               <span className="meta-label">สถานะบัญชี</span>
               <span className="meta-value status-active">● ใช้งานอยู่ (Active)</span>
             </div>
@@ -141,15 +136,6 @@ function Profile() {
                     required
                   />
                 </div>
-              </div>
-
-              <div className="form-group">
-                <label>เบอร์โทรศัพท์</label>
-                <input
-                  type="text"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                />
               </div>
 
               <div className="form-group">

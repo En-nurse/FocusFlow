@@ -47,42 +47,6 @@
   flex-wrap: wrap;
 }
 
-/* View Mode Switcher */
-.view-mode-toggle {
-  display: flex;
-  background: rgba(15, 23, 42, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 4px;
-  gap: 4px;
-}
-
-.view-toggle-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: transparent;
-  color: #94a3b8;
-  border: none;
-  padding: 7px 14px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.view-toggle-btn:hover {
-  color: #f1f5f9;
-  background-color: rgba(255, 255, 255, 0.05);
-}
-
-.view-toggle-btn.active {
-  background: linear-gradient(135deg, #2563eb, #3b82f6);
-  color: #ffffff;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
-}
-
 /* Month Navigation */
 .calendar-nav-controls {
   display: flex;
@@ -286,6 +250,21 @@
 .cell-task-pill.status-completed {
   opacity: 0.6;
   text-decoration: line-through;
+}
+
+.cell-task-pill.multi-day {
+  font-weight: 500;
+  border-radius: 4px;
+}
+
+.cell-task-pill.multi-day.span-start {
+  border-top-left-radius: 6px;
+  border-bottom-left-radius: 6px;
+}
+
+.cell-task-pill.multi-day.span-end {
+  border-top-right-radius: 6px;
+  border-bottom-right-radius: 6px;
 }
 
 .cell-task-pill .pill-title {
@@ -658,375 +637,6 @@
 }
 
 /* =========================================================
-   TIMELINE VIEW (FULL MONTH MULTI-LANE BOARD)
-========================================================= */
-.timeline-view-wrapper {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  width: 100%;
-}
-
-.timeline-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: linear-gradient(145deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8));
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  padding: 16px 20px;
-  flex-wrap: wrap;
-  gap: 16px;
-  backdrop-filter: blur(10px);
-}
-
-.timeline-metrics {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.metric-chip {
-  padding: 5px 12px;
-  border-radius: 8px;
-  font-size: 12.5px;
-  color: #94a3b8;
-  background-color: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.metric-chip strong {
-  color: #f1f5f9;
-  margin-left: 4px;
-}
-
-.metric-chip.total strong {
-  color: #38bdf8;
-}
-
-.metric-chip.completed strong {
-  color: #34d399;
-}
-
-.metric-chip.inprogress strong {
-  color: #fbbf24;
-}
-
-.metric-chip.notstarted strong {
-  color: #94a3b8;
-}
-
-.timeline-filters {
-  display: flex;
-  gap: 14px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.filter-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.filter-group label {
-  font-size: 12.5px;
-  color: #94a3b8;
-  font-weight: 500;
-}
-
-.filter-group select {
-  background-color: rgba(15, 23, 42, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #f1f5f9;
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-size: 12.5px;
-  outline: none;
-  font-family: inherit;
-}
-
-/* Timeline Track Card */
-.timeline-track-card {
-  background: linear-gradient(145deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8));
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 20px;
-  padding: 24px;
-  backdrop-filter: blur(12px);
-  overflow: hidden;
-}
-
-.timeline-track-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 20px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.timeline-track-header-row h3 {
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: #ffffff;
-  margin: 0;
-}
-
-.timeline-subtitle {
-  font-size: 12.5px;
-  color: #94a3b8;
-  margin: 4px 0 0 0;
-}
-
-.timeline-hint {
-  font-size: 12px;
-  color: #64748b;
-  align-self: center;
-}
-
-/* Horizontal Scroll Area */
-.timeline-days-scroll-area {
-  overflow-x: auto;
-  padding-bottom: 16px;
-}
-
-.timeline-days-columns {
-  display: flex;
-  gap: 12px;
-  min-width: 100%;
-  width: max-content;
-}
-
-.timeline-day-column {
-  width: 180px;
-  min-width: 180px;
-  background-color: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 14px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  transition: all 0.2s;
-}
-
-.timeline-day-column:hover {
-  border-color: rgba(59, 130, 246, 0.4);
-}
-
-.timeline-day-column.today {
-  border-color: #3b82f6;
-  background-color: rgba(37, 99, 235, 0.08);
-  box-shadow: 0 0 16px rgba(37, 99, 235, 0.2);
-}
-
-.timeline-day-column.selected {
-  border-color: #38bdf8;
-  box-shadow: 0 0 0 2px #0284c7;
-}
-
-.timeline-day-column.weekend .day-name {
-  color: #f87171;
-}
-
-/* Day Column Header */
-.day-column-header {
-  padding: 10px 12px;
-  background-color: rgba(30, 41, 59, 0.8);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.day-column-header:hover {
-  background-color: rgba(51, 65, 85, 0.8);
-}
-
-.day-column-header .day-name {
-  font-size: 12px;
-  font-weight: 700;
-  color: #64748b;
-}
-
-.day-column-header .day-number {
-  font-size: 14px;
-  font-weight: 800;
-  color: #f1f5f9;
-}
-
-.quick-column-add {
-  margin-left: auto;
-  background: rgba(255, 255, 255, 0.08);
-  color: #94a3b8;
-  border: none;
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.quick-column-add:hover {
-  background-color: #2563eb;
-  color: #ffffff;
-}
-
-/* Day Tasks Lane (Stacked Cards) */
-.day-tasks-lane {
-  padding: 10px 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-height: 220px;
-  max-height: 520px;
-  overflow-y: auto;
-}
-
-.lane-empty-placeholder {
-  text-align: center;
-  color: #475569;
-  font-size: 14px;
-  padding: 40px 0;
-}
-
-/* Timeline Task Card (Stacked in Lane) */
-.timeline-task-card {
-  background-color: rgba(30, 41, 59, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-left: 3px solid #38bdf8;
-  border-radius: 8px;
-  padding: 8px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-  transition: all 0.2s;
-}
-
-.timeline-task-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.timeline-task-card.status-completed {
-  opacity: 0.65;
-}
-
-.card-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 6px;
-}
-
-.timeline-task-title-line {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1;
-  min-width: 0;
-}
-
-.task-title-clamp {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #f8fafc;
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  transition: color 0.2s, text-decoration 0.2s;
-}
-
-.timeline-task-card.status-completed .task-title-clamp,
-.task-title-clamp.done {
-  text-decoration: line-through;
-  color: #64748b;
-}
-
-.timeline-card-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.timeline-mini-btn {
-  background: transparent;
-  border: none;
-  color: #64748b;
-  font-size: 11px;
-  cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 3px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s;
-}
-
-.timeline-mini-btn.edit-btn:hover {
-  color: #38bdf8;
-  background-color: rgba(56, 189, 248, 0.2);
-}
-
-.timeline-mini-btn.delete-btn:hover {
-  color: #ef4444;
-  background-color: rgba(239, 68, 68, 0.2);
-}
-
-.card-desc-clamp {
-  font-size: 11px;
-  color: #94a3b8;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.card-actions-row {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  margin-top: 2px;
-}
-
-.timeline-status-badge {
-  background-color: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #cbd5e1;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 6px;
-  outline: none;
-  cursor: pointer;
-  max-width: 80px;
-}
-
-.timeline-status-badge.completed {
-  color: #34d399;
-  border-color: rgba(16, 185, 129, 0.3);
-}
-
-.timeline-status-badge.in-progress {
-  color: #fbbf24;
-  border-color: rgba(245, 158, 11, 0.3);
-}
-
-.timeline-status-badge.not-started {
-  color: #94a3b8;
-}
-
-/* =========================================================
    EDIT TASK MODAL STYLES
 ========================================================= */
 .modal-backdrop {
@@ -1193,6 +803,150 @@
 
 .btn-submit:hover {
   background: linear-gradient(135deg, #1d4ed8, #2563eb);
+}
+
+/* Image Attachment Styles */
+.image-upload-dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px 20px;
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1.5px dashed rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.image-upload-dropzone:hover {
+  border-color: #3b82f6;
+  color: #ffffff;
+  background-color: rgba(59, 130, 246, 0.08);
+}
+
+.image-upload-dropzone svg {
+  color: #38bdf8;
+  flex-shrink: 0;
+}
+
+.task-image-preview-box {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  max-height: 200px;
+  background-color: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.task-image-preview-box .preview-image {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  display: block;
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: all 0.15s;
+}
+
+.remove-image-btn:hover {
+  background-color: #dc2626;
+  color: #ffffff;
+  border-color: #dc2626;
+}
+
+/* Day Schedule Task Thumbnail */
+.calendar-task-image-wrap {
+  margin: 10px 0 6px;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  height: 110px;
+  cursor: pointer;
+}
+
+.calendar-task-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.25s ease;
+}
+
+.calendar-task-thumbnail:hover {
+  transform: scale(1.05);
+}
+
+/* Lightbox Modal */
+.image-lightbox-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 1100;
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+.image-lightbox-content {
+  position: relative;
+  max-width: 90vw;
+  max-height: 85vh;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: #0f172a;
+}
+
+.lightbox-image {
+  max-width: 100%;
+  max-height: 85vh;
+  object-fit: contain;
+  display: block;
+}
+
+.lightbox-close-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.lightbox-close-btn:hover {
+  background-color: #ef4444;
+  border-color: #ef4444;
 }
 
 /* Responsive */

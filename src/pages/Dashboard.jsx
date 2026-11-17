@@ -3,14 +3,19 @@ import { Link } from "react-router-dom";
 import { useTasks } from "../context/useTasks";
 import { useToast } from "../context/useToast";
 import { TASK_COLORS, DEFAULT_TASK_COLOR } from "../constants/taskColors";
+import TaskImage from "../components/TaskImage";
+import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_SIZE } from "../lib/taskStorage";
 import "./Dashboard.css";
 
 function Dashboard() {
-  const { tasks, user, addTask, updateTask, updateTaskStatus } = useTasks();
+  const { tasks, user, addTask, updateTask, updateTaskStatus, loadingTasks } = useTasks();
   const { showToast } = useToast();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [imageFile, setImageFile] = useState(null);
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -18,9 +23,11 @@ function Dashboard() {
     priority: "Normal",
     color: DEFAULT_TASK_COLOR,
     status: "Not Started",
+    imageUrl: "",
   });
 
   const handleOpenAddModal = () => {
+    setImageFile(null);
     setEditingTask(null);
     setFormData({
       title: "",
@@ -29,11 +36,13 @@ function Dashboard() {
       priority: "Normal",
       color: DEFAULT_TASK_COLOR,
       status: "Not Started",
+      imageUrl: "",
     });
     setIsModalOpen(true);
   };
 
   const handleOpenEditModal = (task) => {
+    setImageFile(null);
     setEditingTask(task);
     setFormData({
       title: task.title || "",
@@ -42,37 +51,94 @@ function Dashboard() {
       priority: task.priority || "Normal",
       color: task.color || DEFAULT_TASK_COLOR,
       status: task.status || "Not Started",
+      imageUrl: task.imageUrl || "",
     });
     setIsModalOpen(true);
   };
 
+  const handleImageChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      showToast("รองรับเฉพาะไฟล์รูปภาพ JPG, PNG และ WebP เท่านั้น", "error");
+      return;
+    }
+
+    if (file.size > MAX_IMAGE_SIZE) {
+      showToast("ขนาดไฟล์รูปภาพต้องไม่เกิน 2MB", "error");
+      return;
+    }
+
+    if (formData.imageUrl && formData.imageUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(formData.imageUrl);
+    }
+
+    setImageFile(file);
+    const localUrl = URL.createObjectURL(file);
+    setFormData((prev) => ({ ...prev, imageUrl: localUrl }));
+    showToast("เลือกรูปภาพเรียบร้อย", "info");
+  };
+
+  const handleRemoveImage = () => {
+    if (formData.imageUrl && formData.imageUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(formData.imageUrl);
+    }
+    setImageFile(null);
+    setFormData((prev) => ({ ...prev, imageUrl: "" }));
+  };
+
   const handleCloseModal = () => {
+    if (formData.imageUrl && formData.imageUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(formData.imageUrl);
+    }
+    setImageFile(null);
     setIsModalOpen(false);
     setEditingTask(null);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.title.trim()) return;
+    if (!formData.title.trim() || isSubmitting) return;
 
-    if (editingTask) {
-      updateTask(editingTask.id, formData);
-      showToast(`บันทึกการแก้ไข "${formData.title}" เรียบร้อย ✏️`, 'info');
-    } else {
-      addTask(formData);
-      showToast(`สร้างงานใหม่ "${formData.title}" สำเร็จ ✨`, 'success');
+    setIsSubmitting(true);
+    try {
+      const payload = {
+        ...formData,
+        imageFile,
+      };
+
+      if (payload.imageUrl && payload.imageUrl.startsWith("blob:")) {
+        delete payload.imageUrl;
+      }
+
+      if (editingTask) {
+        await updateTask(editingTask.id, payload);
+        showToast(`บันทึกการแก้ไข "${formData.title}" เรียบร้อย`, 'info');
+      } else {
+        await addTask(payload);
+        showToast(`สร้างงานใหม่ "${formData.title}" สำเร็จ`, 'success');
+      }
+      handleCloseModal();
+    } catch (error) {
+      showToast(error.message || 'เกิดข้อผิดพลาดในการบันทึกงาน', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
-    handleCloseModal();
   };
 
-  const handleToggleTaskStatus = (task) => {
+  const handleToggleTaskStatus = async (task) => {
     const isCompleted = (task.status || "Not Started") === "Completed";
     const nextStatus = isCompleted ? "In Progress" : "Completed";
-    updateTaskStatus(task.id, nextStatus);
-    if (!isCompleted) {
-      showToast(`🎉 ทำงาน "${task.title}" เสร็จสิ้นแล้ว!`, "celebrate");
-    } else {
-      showToast(`สลับสถานะ "${task.title}" กลับเป็นกำลังทำ`, "info");
+    try {
+      await updateTaskStatus(task.id, nextStatus);
+      if (!isCompleted) {
+        showToast(`ทำงาน "${task.title}" เสร็จสิ้นแล้ว`, "celebrate");
+      } else {
+        showToast(`สลับสถานะ "${task.title}" กลับเป็นกำลังทำ`, "info");
+      }
+    } catch (error) {
+      showToast(error.message || 'เกิดข้อผิดพลาดในการเปลี่ยนสถานะ', "error");
     }
   };
 
@@ -352,7 +418,23 @@ function Dashboard() {
           </div>
 
           <div className="chart-legend-box">
-            <div className="legend-icon">💡</div>
+            <div className="legend-icon">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
+                <path d="M9 18h6" />
+                <path d="M10 22h4" />
+              </svg>
+            </div>
             <div className="legend-text">
               {mostActiveDay.count > 0 ? (
                 <span>
@@ -399,7 +481,12 @@ function Dashboard() {
           </div>
 
           <div className="recent-tasks-list">
-            {recentTasks.length === 0 ? (
+            {loadingTasks && tasks.length === 0 ? (
+              <div className="empty-tasks-box">
+                <h4>กำลังโหลดข้อมูล...</h4>
+                <p>ระบบกำลังดึงข้อมูลงานจาก Supabase</p>
+              </div>
+            ) : recentTasks.length === 0 ? (
               <div className="empty-tasks-box">
                 <div className="empty-tasks-icon">
                   <svg
@@ -483,23 +570,35 @@ function Dashboard() {
                         </span>
                       </div>
                       <span className="task-row-due">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <rect width="18" height="18" x="3" y="4" rx="2" />
-                        <path d="M3 10h18" />
-                      </svg>
-                      {task.dueDate || "ไม่ระบุกำหนดส่ง"}
-                    </span>
-                  </div>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <rect width="18" height="18" x="3" y="4" rx="2" />
+                          <path d="M3 10h18" />
+                        </svg>
+                        {task.dueDate || "ไม่ระบุกำหนดส่ง"}
+                      </span>
+
+                      {task.imageUrl && (
+                        <div className="recent-task-image-wrap">
+                          <TaskImage
+                            src={task.imageUrl}
+                            alt={task.title}
+                            className="recent-task-thumbnail"
+                            onClick={(_e, url) => setSelectedPreviewImage(url || task.imageUrl)}
+                            title="คลิกเพื่อดูรูปภาพขนาดเต็ม"
+                          />
+                        </div>
+                      )}
+                    </div>
 
                   <div className="task-row-badges">
                     <button
@@ -577,6 +676,52 @@ function Dashboard() {
                 />
               </div>
 
+              <div className="form-group">
+                <label>แนบรูปภาพประกอบ</label>
+                {formData.imageUrl ? (
+                  <div className="task-image-preview-box">
+                    <TaskImage
+                      src={formData.imageUrl}
+                      alt="Preview"
+                      className="preview-image"
+                    />
+                    <button
+                      type="button"
+                      className="remove-image-btn"
+                      onClick={handleRemoveImage}
+                      title="ลบรูปภาพ"
+                    >
+                      ✕ ลบรูปภาพ
+                    </button>
+                  </div>
+                ) : (
+                  <label className="image-upload-dropzone">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleImageChange}
+                      style={{ display: "none" }}
+                    />
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+                      <circle cx="9" cy="9" r="2" />
+                      <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                    </svg>
+                    <span>คลิกเพื่อแนบรูปภาพ (PNG, JPG, WebP ไม่เกิน 2MB)</span>
+                  </label>
+                )}
+              </div>
+
               <div className="form-row">
                 <div className="form-group">
                   <label>กำหนดส่ง (Due Date)</label>
@@ -629,11 +774,38 @@ function Dashboard() {
                 >
                   ยกเลิก
                 </button>
-                <button type="submit" className="btn-submit">
-                  {editingTask ? "บันทึกการแก้ไข" : "สร้างงานใหม่"}
+                <button type="submit" className="btn-submit" disabled={isSubmitting}>
+                  {isSubmitting ? "กำลังบันทึก..." : (editingTask ? "บันทึกการแก้ไข" : "สร้างงานใหม่")}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Fullscreen Lightbox Modal */}
+      {selectedPreviewImage && (
+        <div
+          className="image-lightbox-backdrop"
+          onClick={() => setSelectedPreviewImage(null)}
+        >
+          <div
+            className="image-lightbox-content"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="lightbox-close-btn"
+              onClick={() => setSelectedPreviewImage(null)}
+              title="ปิด"
+            >
+              ✕
+            </button>
+            <TaskImage
+              src={selectedPreviewImage}
+              alt="Full Preview"
+              className="lightbox-image"
+            />
           </div>
         </div>
       )}

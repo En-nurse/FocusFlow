@@ -4,6 +4,7 @@ import { useTasks } from "../context/useTasks";
 import { useToast } from "../context/useToast";
 import "./Sidebar.css";
 import defaultAvatar from "../assets/default-avatar.svg";
+import appLogo from "../assets/logo.png";
 import { supabase } from "../lib/supabase";
 
 function Sidebar() {
@@ -37,7 +38,7 @@ function Sidebar() {
             showToast("เกิดข้อผิดพลาดในการออกจากระบบ: " + error.message, 'error');
             return;
           }
-          showToast("ออกจากระบบสำเร็จ 👋", 'info');
+          showToast("ออกจากระบบสำเร็จ", 'info');
           navigate("/login", { replace: true });
         } catch {
           showToast("เกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่อีกครั้ง", 'error');
@@ -146,19 +147,7 @@ function Sidebar() {
       <div className="sidebar-brand">
         <div className="brand-logo-glow">
           <div className="brand-logo-icon">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-            </svg>
+            <img src={appLogo} alt="FocusFlow Logo" className="brand-logo-img" />
           </div>
         </div>
         <div className="brand-text">
